@@ -40,7 +40,9 @@
 	},
 
 	"hostRequirements": {
-		"cpus": 2
+		"cpus": 4,
+		"memory": "22gb",
+        "storage": "40gb"
 	},
 
 	// Use 'postCreateCommand' to run commands after the container is created.
