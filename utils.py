@@ -167,7 +167,7 @@ def helm_install(name="", chart="", values_file="", version=""):
 ##############################
 # DT FUNCTIONS
 
-def send_log_to_dt_or_otel_collector(success, msg_string="", dt_api_token="", endpoint=get_otel_collector_endpoint(), destroy_codespace=False, dt_tenant_live=""):
+def send_log_to_dt_or_otel_collector(success, msg_string="", dt_api_token="", endpoint=get_otel_collector_endpoint(), destroy_codespace=False, dt_tenant_base=""):
 
     attributes_list = [{"key": "success", "value": { "boolean": success }}]
 
@@ -188,7 +188,7 @@ def send_log_to_dt_or_otel_collector(success, msg_string="", dt_api_token="", en
             "Content-Type": "application/json"
         }
 
-        requests.post(f"{dt_tenant_live}/api/v2/logs/ingest", 
+        requests.post(f"{dt_tenant_base}/api/v2/logs/ingest", 
           headers = headers,
           json=payload,
           timeout=5
@@ -220,16 +220,16 @@ def send_log_to_dt_or_otel_collector(success, msg_string="", dt_api_token="", en
     # Note: Log lines inside here must have destroy_codespace=False to avoid circular calls
     destroy_codespace = False # DEBUG: TODO remove. Temporarily override while developing
     if destroy_codespace:
-        send_log_to_dt_or_otel_collector(success=True, msg_string=f"Destroying codespace: {CODESPACE_NAME}", destroy_codespace=False, dt_tenant_live=dt_tenant_live)
+        send_log_to_dt_or_otel_collector(success=True, msg_string=f"Destroying codespace: {CODESPACE_NAME}", destroy_codespace=False, dt_tenant_base=dt_tenant_base)
 
         destroy_codespace_output = subprocess.run(["gh", "codespace", "delete", "--codespace", CODESPACE_NAME], capture_output=True, text=True)
 
         if destroy_codespace_output.returncode == 0:
-            send_log_to_dt_or_otel_collector(success=True, msg_string=f"codespace {CODESPACE_NAME} deleted successfully", destroy_codespace=False, dt_tenant_live=dt_tenant_live)
+            send_log_to_dt_or_otel_collector(success=True, msg_string=f"codespace {CODESPACE_NAME} deleted successfully", destroy_codespace=False, dt_tenant_base=dt_tenant_base)
         else:
-            send_log_to_dt_or_otel_collector(success=False, msg_string=f"failed to delete codespace {CODESPACE_NAME}. {destroy_codespace_output.stderr}", destroy_codespace=False, dt_tenant_live=dt_tenant_live)
+            send_log_to_dt_or_otel_collector(success=False, msg_string=f"failed to delete codespace {CODESPACE_NAME}. {destroy_codespace_output.stderr}", destroy_codespace=False, dt_tenant_base=dt_tenant_base)
 
-def get_geolocation(dt_env_type="live"):
+def get_geolocation(dt_env_type):
     if dt_env_type.lower() == "dev":
         return GEOLOCATION_DEV
     elif dt_env_type.lower() == "sprint":
@@ -239,7 +239,7 @@ def get_geolocation(dt_env_type="live"):
     else:
         return None
 
-def get_sso_token_url(dt_env_type="live"):
+def get_sso_token_url(dt_env_type):
     if dt_env_type.lower() == "dev":
         return SSO_TOKEN_URL_DEV
     elif dt_env_type.lower() == "sprint":
@@ -249,7 +249,7 @@ def get_sso_token_url(dt_env_type="live"):
     else:
         return None
     
-def create_dt_api_token(token_name, scopes, dt_api_token, dt_tenant_live):
+def create_dt_api_token(token_name, scopes, dt_api_token, dt_tenant_base):
 
     # Automatically expire tokens 1 day in future.
     time_future = datetime.datetime.now() + datetime.timedelta(days=1)
@@ -268,7 +268,7 @@ def create_dt_api_token(token_name, scopes, dt_api_token, dt_tenant_live):
     }
 
     resp = requests.post(
-        url=f"{dt_tenant_live}/api/v2/apiTokens",
+        url=f"{dt_tenant_base}/api/v2/apiTokens",
         headers=headers,
         json=payload
     )
@@ -278,21 +278,27 @@ def create_dt_api_token(token_name, scopes, dt_api_token, dt_tenant_live):
 
     return resp.json()['token']
 
-def build_dt_urls(dt_env_id, dt_env_type="live"):
-    if dt_env_type.lower() == "live":
-        dt_tenant_apps = f"https://{dt_env_id}.apps.dynatrace.com"
-        dt_tenant_live = f"https://{dt_env_id}.live.dynatrace.com"
-    else:
-      dt_tenant_apps = f"https://{dt_env_id}.{dt_env_type}.apps.dynatrace.com"
-      dt_tenant_live = f"https://{dt_env_id}.{dt_env_type}.dynatrace.com"
 
-    # if environment is "dev" or "sprint"
-    # ".dynatracelabs.com" not ".dynatrace.com"
-    if dt_env_type.lower() == "dev" or dt_env_type.lower() == "sprint":
-        dt_tenant_apps = dt_tenant_apps.replace(".dynatrace.com", ".dynatracelabs.com")
-        dt_tenant_live = dt_tenant_live.replace(".dynatrace.com", ".dynatracelabs.com")
+def build_dt_urls(dt_env_id, dt_env_type):
     
-    return dt_tenant_apps, dt_tenant_live
+    dt_env_type_lower = dt_env_type.lower()
+    
+    if dt_env_type_lower == "live":
+        dt_tenant_apps = f"https://{dt_env_id}.apps.dynatrace.com"
+        dt_tenant_base = f"https://{dt_env_id}.live.dynatrace.com"
+    elif dt_env_type_lower == "sprint":
+        dt_tenant_apps = f"https://{dt_env_id}.sprint.dynatracelabs.com"
+        dt_tenant_base = f"https://{dt_env_id}.sprint.dynatracelabs.com"
+    elif dt_env_type_lower == "dev":
+        dt_tenant_apps = f"https://{dt_env_id}.dev.dynatracelabs.com"
+        dt_tenant_base = f"https://{dt_env_id}.dev.dynatracelabs.com"
+    else:
+        dt_tenant_apps = "none"
+        dt_tenant_base = "none"
+        exit(f"Cannot build DT URLs. Invalid environment type specified. Must be one of: [live, sprint, dev]. Got: {dt_env_type}. Exiting.")
+    
+    return dt_tenant_apps, dt_tenant_base
+
 
 def get_sso_auth_token(sso_token_url, oauth_client_id, oauth_client_secret, oauth_urn, permissions):
     
@@ -323,6 +329,7 @@ def get_sso_auth_token(sso_token_url, oauth_client_id, oauth_client_secret, oaut
     access_token_value = access_token_json['access_token']
 
     return access_token_value
+
 
 # TODO: This is naieve. Multiple POSTs for the same content creates duplicated. Improve.
 def upload_dt_document_asset(sso_token_url, path, name, type, dt_tenant_apps, upload_content_type="application/json"):
