@@ -4,6 +4,8 @@ name: kind
 nodes:
 - role: control-plane
   image: kindest/node:v1.32.2
+- role: worker
+  image: kindest/node:v1.32.2
   extraPortMappings:
   - hostPort: 8080
     containerPort: 8080
