@@ -56,4 +56,5 @@ markdown_extensions:
 
 plugins:
     - search
-    - markdownextradata
+extra_css:
+  - overrides/assets/stylesheets/extra.css
